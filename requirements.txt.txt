@@ -1,0 +1,13 @@
+torch
+transformers
+accelerate
+sentence-transformers
+diff-match-patch
+langchain-core
+langchain-text-splitters
+gradio
+ffmpeg-python
+openai-whisper
+python-docx
+pandas
+numpy

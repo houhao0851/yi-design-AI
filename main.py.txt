@@ -1,0 +1,109 @@
+import gradio as gr
+import diff_match_patch as dmp_module
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from transformers import AutoTokenizer, AutoModelForCausalLM, pipeline
+import whisper
+import docx
+import os
+
+# 加载易设计AI专属Prompt
+with open("prompt_template.txt", "r", encoding="utf-8") as f:
+    PROMPT = f.read()
+
+# 加载轻量长文本开源模型
+model_name = "Qwen/Qwen2.5-1.8B-Instruct"
+tokenizer = AutoTokenizer.from_pretrained(model_name)
+model = AutoModelForCausalLM.from_pretrained(
+    model_name,
+    device_map="auto",
+    trust_remote_code=True
+)
+
+chat_pipeline = pipeline(
+    "text-generation",
+    model=model,
+    tokenizer=tokenizer,
+    temperature=0.1,
+    top_p=0.3,
+    max_new_tokens=8192
+)
+
+# 长文本分片优化
+text_splitter = RecursiveCharacterTextSplitter(
+    chunk_size=6000,
+    chunk_overlap=300,
+    length_function=len
+)
+
+# 字符级差异对比引擎
+dmp = dmp_module.diff_match_patch()
+
+# 离线语音转写模型
+whisper_model = whisper.load_model("base")
+
+# 音频转文本功能
+def audio_to_text(audio_file):
+    result = whisper_model.transcribe(audio_file)
+    return result["text"]
+
+# 易设计AI 核心智能校对逻辑
+def ai_check(original_text, compare_text):
+    full_prompt = f"""
+{PROMPT}
+标准原文：
+{original_text}
+
+待校对文稿：
+{compare_text}
+
+请严格按照易设计AI工作规范，输出：完整差异标注说明 + 最终规范定稿文稿
+"""
+    res = chat_pipeline(full_prompt)
+    return res[0]["generated_text"]
+
+# 高亮差异比对
+def diff_highlight(orig, cmp):
+    diffs = dmp.diff_main(orig, cmp)
+    dmp.diff_cleanupSemantic(diffs)
+    html = dmp.diff_prettyHtml(diffs)
+    return html
+
+# 读取Word文档
+def read_docx(file):
+    doc = docx.Document(file)
+    return "\n".join([p.text for p in doc.paragraphs])
+
+# 易设计AI 完整工作流执行
+def run_workflow(original, compare, audio):
+    # 音频优先转文稿
+    if audio is not None:
+        compare = audio_to_text(audio)
+    
+    # 文本分片预处理
+    orig_chunks = text_splitter.split_text(original)
+    cmp_chunks = text_splitter.split_text(compare)
+
+    # AI智能校对结果
+    ai_result = ai_check(original, compare)
+    # 可视化差异对比
+    diff_html = diff_highlight(original, compare)
+
+    return ai_result, diff_html
+
+# 易设计AI 可视化Web界面
+with gr.Blocks(title="易设计AI｜智能文稿校对系统") as demo:
+    gr.Markdown("# 易设计AI · 私有化智能校对系统 | 开源稳定版")
+    with gr.Row():
+        original = gr.Textbox(label="标准原文", lines=12)
+        compare = gr.Textbox(label="待校对/优化文稿", lines=12)
+    audio = gr.Audio(label="语音一键转文稿", type="filepath")
+    btn = gr.Button("🚀 易设计AI 一键智能校对", variant="primary")
+
+    ai_out = gr.Textbox(label="AI智能校对定稿结果", lines=15)
+    diff_out = gr.HTML(label="可视化差异对照（增删改高亮）")
+
+    btn.click(run_workflow, inputs=[original, compare, audio], outputs=[ai_out, diff_out])
+
+if __name__ == "__main__":
+    # 全局开放访问，服务器部署专用
+    demo.launch(server_name="0.0.0.0", server_port=7860)

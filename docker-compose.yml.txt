@@ -1,0 +1,19 @@
+version: '3.8'
+services:
+  yisheji-ai:
+    build: .
+    ports:
+      - "7860:7860"
+    restart: always
+    volumes:
+      - ./data:/app/data
+      - ./models:/app/models
+    deploy:
+      resources:
+        limits:
+          cpus: '6'
+          memory: 16G
+    environment:
+      - MODEL_NAME=Qwen/Qwen2.5-1.8B-Instruct
+      - TEMPERATURE=0.1
+      - TOP_P=0.3
